@@ -25,10 +25,10 @@ public class Test : MonoBehaviour
         Matrix<double> matrix2 = Matrix<double>.Build.Dense(3, 1, 2);
         Debug.Log(matrix1 * matrix2);
 
-        DNN1 dnn  = new DNN1(2);
+        DNN dnn  = new DNN(2);
         dnn.AddLayer(3);
         dnn.AddLayer(4);
-        dnn.AddLayer(1);
+        dnn.AddLayer(1, true);
         dnn.DNNInit();
 
         List<Matrix<double>>a = new List<Matrix<Double>>();
@@ -52,7 +52,7 @@ public class Test : MonoBehaviour
                 Debug.Log("¿ÀÂ÷" + (A[i % 4][0, 0] - f[0, 0]));
             dnn.resetDelta();
             dnn.Backword(A[i % 4]);
-            dnn.updateDNN(1);
+            dnn.updateDNN();
         }
     }
 
