@@ -12,52 +12,70 @@ using UnityEngine.UIElements;
 
 public class Test : MonoBehaviour
 {
-    IEnumerator e()
-    {
-        yield return new WaitForSeconds(1);
-    }
+    DQN DQN_;
+    public double notRecievedReward;
+    public GameObject target;
+
+    private int syncStep;
     void Start()
     {
-        Debug.Log("start");
-        Program program = new Program();
+        //인풋 6: 내x z, 보상 x z , 거리,내 rotate y
+        //액션 4: 왼쪽회전, 오른쪽 회전, 직진, 후진 
+        List<int>HiddenLayer = new List<int>() { 7,6,5 };
+        DQN_ = new DQN(6,HiddenLayer,3);
+    }
 
-        Matrix<double> matrix1 = Matrix<double>.Build.Dense(2, 3, 1);
-        Matrix<double> matrix2 = Matrix<double>.Build.Dense(3, 1, 2);
-        Debug.Log(matrix1 * matrix2);
+    float distane1;
+    private void Update()
+    {
+        notRecievedReward = 0;
+        Matrix<double> inputMatrix = Matrix<double>.Build.DenseOfArray(new double[,]
+        { { transform.position.x, transform.position.z, target.transform.position.x, target.transform.position.z
+        , Vector3.Distance(transform.position, target.transform.position) , transform.rotation.y} });
+        
+        int Action = DQN_.EpsilonGreedyAction(inputMatrix);
 
-        DNN dnn  = new DNN(2);
-        dnn.AddLayer(3);
-        dnn.AddLayer(4);
-        dnn.AddLayer(1, true);
-        dnn.DNNInit();
+        distane1 = Vector3.Distance(transform.position, target.transform.position);
+        if(Action == 0)
+            transform.GetComponent<Rigidbody>().angularVelocity += new Vector3(0,0.7f,0);
+        else if(Action == 1)
+            transform.GetComponent<Rigidbody>().angularVelocity += new Vector3(0,-0.7f,0);
+        else if(Action == 2)
+            gameObject.GetComponent<Rigidbody>().velocity += transform.TransformDirection(Vector3.forward) * 1f;
 
-        List<Matrix<double>>a = new List<Matrix<Double>>();
-        a.Add(Matrix<double>.Build.DenseOfArray(new double[,] { { 1 , 1 } }));
-        a.Add(Matrix<double>.Build.DenseOfArray(new double[,] { { 1 , 0 } }));
-        a.Add(Matrix<double>.Build.DenseOfArray(new double[,] { { 0 , 1 } }));
-        a.Add(Matrix<double>.Build.DenseOfArray(new double[,] { { 0 , 0 } }));
-
-        List<Matrix<double>>A = new List<Matrix<Double>>();
-        A.Add(Matrix<double>.Build.DenseOfArray(new double[,] { { 1 } }));
-        A.Add(Matrix<double>.Build.DenseOfArray(new double[,] { { 0 } }));
-        A.Add(Matrix<double>.Build.DenseOfArray(new double[,] { { 0 } }));
-        A.Add(Matrix<double>.Build.DenseOfArray(new double[,] { { 0 } }));
-
-        for (int i = 0; i < 5000; i++)
+        if (transform.position.y < 0)
         {
-            Matrix<double> f = dnn.Forward(a[i % 4]);
-            if (i < 10)
-                Debug.Log("오차" + (A[i % 4][0, 0] - f[0, 0]));
-            if (i % 10 == 1)
-                Debug.Log("오차" + (A[i % 4][0, 0] - f[0, 0]));
-            dnn.resetDelta();
-            dnn.Backword(A[i % 4]);
-            dnn.updateDNN();
+            notRecievedReward -= 2;
+            transform.position = new Vector3(0, 1, 0);
+            transform.rotation = Quaternion.identity;
+            gameObject.GetComponent<Rigidbody>().velocity = new Vector3(0, 0, 0);
+            gameObject.GetComponent<Rigidbody>().angularVelocity = new Vector3(0, 0, 0);
+        }
+        if (distane1 > Vector3.Distance(transform.position, target.transform.position))
+            notRecievedReward += 0.0001f;
+        else
+            notRecievedReward -= 0.0001f;
+
+        //새로온 상태 매트릭스
+        Matrix<double> newStateMatrix = Matrix<double>.Build.DenseOfArray(new double[,]
+        { { transform.position.x, transform.position.z, target.transform.position.x, target.transform.position.z
+        , Vector3.Distance(transform.position, target.transform.position) , transform.rotation.y} });
+        
+        Debug.Log("R=: " + notRecievedReward);
+        DQN_.SaveReplayMemory(notRecievedReward,newStateMatrix);
+        DQN_.DecayingEpsilon();
+        DQN_.Learning(16);
+
+        syncStep++;
+        if(syncStep == 5)
+        {
+            DQN_.Synchronize();
+            syncStep = 0;
         }
     }
 
 
-class Program
+    class Program
 {
     public void start()
     {

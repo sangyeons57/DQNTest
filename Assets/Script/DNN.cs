@@ -2,7 +2,9 @@ using MathNet.Numerics;
 using MathNet.Numerics.LinearAlgebra;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Runtime.Serialization.Formatters.Binary;
 using Unity.VisualScripting.Antlr3.Runtime.Tree;
 using UnityEngine;
 using UnityEngine.UI;
@@ -10,6 +12,7 @@ using Random = System.Random;
 
 namespace ANN
 {
+    [Serializable]
     public class DNN
     {
         //아웃풋 레이어 설정했는지
@@ -58,6 +61,7 @@ namespace ANN
                         weights[i][row,col] = random.NextDouble() * Math.Sqrt(2.0f / weights[i].RowCount);
                     }
                 }
+                Debug.Log("ww: " + weights[i]);
             }
             //편향은 0으로 이미설정됨
         }
@@ -87,6 +91,7 @@ namespace ANN
             if (inputs.ColumnCount != inputLayerNodeCount) Debug.LogError("인풋노드개수랑 인풋이다름");
             if (!isFinishAddLayer) Debug.LogError("아웃풋 레이어가 세팅이 안됨");
             layers = new List<Matrix<double>>() { inputs };
+            Debug.Log("ii" +(-1)+" :" + inputs);
             //모든레이어를 하나씩 진행한다.
             for (int i = 0; i < layerCount.Count - 1; i++)
             {
@@ -96,10 +101,12 @@ namespace ANN
                 layers.Add(values);
                 //다음 레이어의 인풋으로 현제 레이어의 아웃풋을 넣음
                 inputs = values;
+            Debug.Log("ii" +(i)+" :" + inputs);
+            //Debug.Log(values);
             }
             //마지막 레이어빼고는 전부 활성화 함수를 거침, 편향도 없음
             layers.Add(inputs * weights[layerCount.Count - 1]);
-
+            Debug.Log("ii" +(layerCount.Count - 1)+" :" + (inputs * weights[layerCount.Count - 1]));
             return layers.Last();
         }
 
@@ -108,15 +115,19 @@ namespace ANN
         //역전파
         //errorMatrix는 오차 메트릭스 [[0],[0],[선택한값의오차],[0]] 이렇게 들어오며됨
         //delta값은 계속 합함
-        public void Backword(Matrix<double> realOutput)
+        public void Backword(double realOutput, int action)
         {
             //layers.Last().
-            Matrix<double> errorMatrix = (realOutput - layers.Last());
+            Matrix<double> errorMatrix = Matrix<double>.Build.Dense(layers.Last().RowCount,layers.Last().ColumnCount,0);
+            //선택된 액션이 아닌 것들은 오차를 전부 0 으로 만듦
+            errorMatrix[0,action] = realOutput - layers.Last()[0, action];
+            Debug.Log("errorMatrix: " + errorMatrix);
             //출력층은 편향이없고 활성화함수가없음
             Matrix<double> deltaElement = errorMatrix.PointwiseMultiply(layers.Last());
             //오차값저장 사이즈-1 ,입력층 -1 = layer.count -2
             delta[layers.Count - 2] += deltaElement;
 
+            Debug.Log("delta: " + deltaElement);
             //다음 에러로 변경
             errorMatrix = deltaElement * weights[layers.Count - 2].Transpose();
 
@@ -129,6 +140,7 @@ namespace ANN
                 errorMatrix = deltaElement * weights[i-1].Transpose();
 
                 delta[i-1] += deltaElement;
+                Debug.Log("delta: " + deltaElement);
             }
             //델다값 합산 완료
             //역전파 한번당 배치사이즈 증가
@@ -138,19 +150,21 @@ namespace ANN
         //batchsize가들어오면 그거 수만큼 평균을 냄
         public void updateDNN()
         {
+            double total = 0;
             // 그리고 layer.count - 2은 마지막 은닉층,
             // 0번째는 입력층layer.count - 1은 출력층
             for(int i = 0; i < layers.Count - 1; i++)
             {
+                total += delta[i].ToColumnMajorArray().Sum();
+
                 //평균 * 학습률
                 //(전 레이어의 입력 (내적) 오차값) / 배치 크기 = 각 가중치의 평균
-                Debug.Log(((layers[i].Transpose() * delta[i]) / batchSize) * learning_rate);
                 weights[i] += ((layers[i].Transpose() * delta[i]) / batchSize) * learning_rate;
+                Debug.Log("weight: " +weights[i]);
 
                 // 편향의 layer.count - 2  는 출력층 하지만 출력층은 편향이 없음으로 건너뜀
                 if (i == layers.Count - 2) break;
 
-                Debug.Log( (delta[i] / batchSize) * learning_rate);
                 bias[i] += (delta[i] / batchSize) * learning_rate;
             }
         }
@@ -159,9 +173,9 @@ namespace ANN
         {
             delta = new List<Matrix<double>>();
             batchSize = 0;
-            for(int i = 1; i < layers.Count;i++)
+            foreach(int layer  in layerCount)
             {
-                delta.Add(Matrix<double>.Build.Dense(layers[i].RowCount, layers[i].ColumnCount, 0));
+                delta.Add(Matrix<double>.Build.Dense(1, layer, 0));
             }
         }
 
@@ -173,6 +187,17 @@ namespace ANN
         static Matrix<double> ReLUDerivative(Matrix<double> matrix)
         {
             return matrix.Map(x => x > 0 ? 1.0 : 0.01);
+        }
+
+        public DNN DeepCopy()
+        {
+            using (MemoryStream memoryStream = new MemoryStream())
+            {
+                BinaryFormatter formatter = new BinaryFormatter();
+                formatter.Serialize(memoryStream, this);
+                memoryStream.Position = 0;
+                return (DNN)formatter.Deserialize(memoryStream);
+            }
         }
     }
 }
